@@ -1,13 +1,12 @@
 import random
 import datetime
 import os
-import requests  # აუცილებელია VPN შემოწმებისთვის
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# ბაზის კონფიგურაცია
+# Render-ისთვის ბაზის მისამართის ოპტიმიზაცია
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'giveaway.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -18,6 +17,7 @@ ADMIN_PASSWORD = "TSLadmin"
 
 class Participant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    # full_name-ს nullable=True ვუწერთ, რომ თუ ფორმიდან არ მოვა, არ გაჭედოს
     full_name = db.Column(db.String(100), nullable=True) 
     discord_tag = db.Column(db.String(100), nullable=False)
     steam_name = db.Column(db.String(100), nullable=False)
@@ -25,6 +25,7 @@ class Participant(db.Model):
     browser_fingerprint = db.Column(db.String(200), nullable=False)
     date_joined = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+# ბაზის შექმნა
 with app.app_context():
     db.create_all()
 
@@ -41,24 +42,16 @@ def register():
     try:
         data = request.json
         if not data:
-            return jsonify({"status": "error", "message": "მონაცემები ცარიელია"}), 400
+            return jsonify({"status": "error", "message": "მონაცემები არ არის გამოგზავნილი"}), 400
 
-        # 1. მომხმარებლის რეალური IP-ს გაგება
+        # Render-ზე რეალური IP-ს ამოღება
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         if user_ip and ',' in user_ip:
             user_ip = user_ip.split(',')[0].strip()
 
-        # 2. VPN / PROXY შემოწმება (ip-api.com)
-        try:
-            vpn_check = requests.get(f"http://ip-api.com/json/{user_ip}?fields=status,proxy,hosting", timeout=2).json()
-            if vpn_check.get('status') == 'success':
-                if vpn_check.get('proxy') is True or vpn_check.get('hosting') is True:
-                    return jsonify({"status": "error", "message": "VPN/Proxy გამოყენება აკრძალულია!"}), 403
-        except Exception as e:
-            print(f"VPN check failed: {e}") # თუ API გაითიშა, რეგისტრაცია მაინც გაგრძელდეს
-
-        # 3. დუბლიკატების შემოწმება
         fingerprint = data.get('fingerprint')
+
+        # ვამოწმებთ უკვე არის თუ არა ბაზაში (IP-თ ან Fingerprint-ით)
         exists = Participant.query.filter(
             (Participant.browser_fingerprint == fingerprint) | 
             (Participant.ip_address == user_ip)
@@ -67,7 +60,7 @@ def register():
         if exists:
             return jsonify({"status": "error", "message": "თქვენ უკვე დარეგისტრირებული ხართ!"}), 400
         
-        # 4. ბაზაში შენახვა
+        # ახალი მომხმარებლის შექმნა
         new_user = Participant( 
             full_name=data.get('full_name', 'No Name'),
             discord_tag=data.get('discord_tag'), 
@@ -82,8 +75,8 @@ def register():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error: {e}")
-        return jsonify({"status": "error", "message": "სერვერის შეცდომა"}), 500
+        print(f"Error: {e}") # ლოგებში რომ გამოჩნდეს რა მოხდა
+        return jsonify({"status": "error", "message": "სერვერის შეცდომა რეგისტრაციისას"}), 500
 
 @app.route('/admin/<password>')
 def admin_panel(password):
