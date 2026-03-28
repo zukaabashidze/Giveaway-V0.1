@@ -1,7 +1,7 @@
 import random
 import datetime
 import os
-import requests  # აუცილებელია VPN შემოწმებისთვის
+import requests
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 
@@ -43,21 +43,33 @@ def register():
         if not data:
             return jsonify({"status": "error", "message": "მონაცემები ცარიელია"}), 400
 
-        # 1. მომხმარებლის რეალური IP-ს გაგება
+        # 1. IP-ს გაგება
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         if user_ip and ',' in user_ip:
             user_ip = user_ip.split(',')[0].strip()
 
-        # 2. VPN / PROXY შემოწმება (ip-api.com)
+        # 2. გაძლიერებული VPN/PROXY და ქვეყნის შემოწმება
         try:
-            vpn_check = requests.get(f"http://ip-api.com/json/{user_ip}?fields=status,proxy,hosting", timeout=2).json()
+            # ვიყენებთ countryCode-ს Urban VPN-ის და სხვა უცხოური IP-ების დასაბლოკად
+            vpn_check = requests.get(f"http://ip-api.com/json/{user_ip}?fields=status,proxy,hosting,countryCode", timeout=3).json()
+            
             if vpn_check.get('status') == 'success':
+                # ბლოკავს ყველას, ვინც საქართველოდან (GE) არ არის
+                if vpn_check.get('countryCode') != 'GE':
+                    return jsonify({"status": "error", "message": "რეგისტრაცია დაშვებულია მხოლოდ საქართველოდან!"}), 403
+                
+                # ბლოკავს პროქსებს/ჰოსტინგებს (თუ მაინც იპოვეს ქართული Proxy)
                 if vpn_check.get('proxy') is True or vpn_check.get('hosting') is True:
                     return jsonify({"status": "error", "message": "VPN/Proxy გამოყენება აკრძალულია!"}), 403
         except Exception as e:
-            print(f"VPN check failed: {e}") # თუ API გაითიშა, რეგისტრაცია მაინც გაგრძელდეს
+            print(f"VPN check failed: {e}")
 
-        # 3. დუბლიკატების შემოწმება
+        # 3. Timezone-ის შემოწმება (თუ JS-დან აგზავნი დროს)
+        client_tz = data.get('timezone')
+        if client_tz and client_tz != "Asia/Tbilisi":
+            return jsonify({"status": "error", "message": "გამორთეთ VPN და გაასწორეთ საათი!"}), 403
+
+        # 4. დუბლიკატების შემოწმება
         fingerprint = data.get('fingerprint')
         exists = Participant.query.filter(
             (Participant.browser_fingerprint == fingerprint) | 
@@ -67,7 +79,7 @@ def register():
         if exists:
             return jsonify({"status": "error", "message": "თქვენ უკვე დარეგისტრირებული ხართ!"}), 400
         
-        # 4. ბაზაში შენახვა
+        # 5. ბაზაში შენახვა
         new_user = Participant( 
             full_name=data.get('full_name', 'No Name'),
             discord_tag=data.get('discord_tag'), 
