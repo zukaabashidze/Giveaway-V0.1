@@ -48,8 +48,7 @@ def register():
     if exists:
         return jsonify({"status": "error", "message": "თქვენ უკვე დარეგისტრირებული ხართ!"}), 400
     
-    new_user = Participant(
-        full_name=data['full_name'], 
+    new_user = Participant( 
         discord_tag=data['discord_tag'], 
         steam_name=data['steam_name'], 
         ip_address=request.remote_addr, 
@@ -82,8 +81,7 @@ def pick_winner(password):
     participants = Participant.query.all()
     if not participants: return jsonify({"status": "error", "message": "მონაწილეები არ არიან!"})
     winner = random.choice(participants)
-    return jsonify({
-        "full_name": winner.full_name, 
+    return jsonify({ 
         "discord": winner.discord_tag, 
         "steam": winner.steam_name
     })
