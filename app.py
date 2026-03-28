@@ -31,16 +31,19 @@ with app.app_context():
     db.create_all()
 
 def is_vpn(ip):
-    """ამოწმებს IP მისამართს VPN/Proxy-ზე proxycheck.io-ს მეშვეობით"""
     try:
-        # ვიყენებთ შენს პირად API Key-ს
-        url = f"https://proxycheck.io/v2/{ip}?key={PROXYCHECK_API_KEY}&vpn=1&asn=1"
+        # დავამატეთ &risk=1 და &cur=1 პარამეტრები მეტი სიზუსტისთვის
+        url = f"https://proxycheck.io/v2/{ip}?key={PROXYCHECK_API_KEY}&vpn=1&asn=1&risk=1"
         response = requests.get(url, timeout=5).json()
         
         if response.get("status") == "ok":
-            # თუ პასუხში proxy არის "yes", ესე იგი VPN ან პროქსია
-            if response.get(ip, {}).get("proxy") == "yes":
+            data = response.get(ip, {})
+            # ვბლოკავთ თუ არის proxy, vpn ან თუ "risk" ქულა მაღალია (Urban VPN ხშირად აქ ვარდება)
+            if data.get("proxy") == "yes" or data.get("type") == "VPN" or data.get("risk", 0) > 50:
                 return True
+        return False
+    except Exception as e:
+        print(f"VPN Check Error: {e}")
         return False
     except Exception as e:
         print(f"VPN Check Error: {e}")
