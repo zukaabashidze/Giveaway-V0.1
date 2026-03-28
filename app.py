@@ -1,23 +1,25 @@
 import random
 import datetime
 import os
+import requests
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# Render-ისთვის ბაზის მისამართის ოპტიმიზაცია
+# მონაცემთა ბაზის კონფიგურაცია
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'giveaway.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# პარამეტრები
 ADMIN_PASSWORD = "TSLadmin"
+PROXYCHECK_API_KEY = "m3j506-75k483-1c97ho-6848lz"
 
 class Participant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    # full_name-ს nullable=True ვუწერთ, რომ თუ ფორმიდან არ მოვა, არ გაჭედოს
     full_name = db.Column(db.String(100), nullable=True) 
     discord_tag = db.Column(db.String(100), nullable=False)
     steam_name = db.Column(db.String(100), nullable=False)
@@ -25,9 +27,24 @@ class Participant(db.Model):
     browser_fingerprint = db.Column(db.String(200), nullable=False)
     date_joined = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-# ბაზის შექმნა
 with app.app_context():
     db.create_all()
+
+def is_vpn(ip):
+    """ამოწმებს IP მისამართს VPN/Proxy-ზე proxycheck.io-ს მეშვეობით"""
+    try:
+        # ვიყენებთ შენს პირად API Key-ს
+        url = f"https://proxycheck.io/v2/{ip}?key={PROXYCHECK_API_KEY}&vpn=1&asn=1"
+        response = requests.get(url, timeout=5).json()
+        
+        if response.get("status") == "ok":
+            # თუ პასუხში proxy არის "yes", ესე იგი VPN ან პროქსია
+            if response.get(ip, {}).get("proxy") == "yes":
+                return True
+        return False
+    except Exception as e:
+        print(f"VPN Check Error: {e}")
+        return False
 
 @app.route('/')
 def index():
@@ -44,14 +61,21 @@ def register():
         if not data:
             return jsonify({"status": "error", "message": "მონაცემები არ არის გამოგზავნილი"}), 400
 
-        # Render-ზე რეალური IP-ს ამოღება
+        # ნამდვილი IP-ს ამოღება (Render/Heroku-სთვის)
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         if user_ip and ',' in user_ip:
             user_ip = user_ip.split(',')[0].strip()
 
+        # 1. VPN შემოწმება
+        if is_vpn(user_ip):
+            return jsonify({
+                "status": "error", 
+                "message": "VPN-ის გამოყენება აკრძალულია! გთხოვთ გამორთოთ და სცადოთ თავიდან."
+            }), 400
+
         fingerprint = data.get('fingerprint')
 
-        # ვამოწმებთ უკვე არის თუ არა ბაზაში (IP-თ ან Fingerprint-ით)
+        # 2. დუბლიკატების შემოწმება (IP ან Fingerprint)
         exists = Participant.query.filter(
             (Participant.browser_fingerprint == fingerprint) | 
             (Participant.ip_address == user_ip)
@@ -60,7 +84,7 @@ def register():
         if exists:
             return jsonify({"status": "error", "message": "თქვენ უკვე დარეგისტრირებული ხართ!"}), 400
         
-        # ახალი მომხმარებლის შექმნა
+        # 3. მონაცემების შენახვა
         new_user = Participant( 
             full_name=data.get('full_name', 'No Name'),
             discord_tag=data.get('discord_tag'), 
@@ -75,7 +99,7 @@ def register():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error: {e}") # ლოგებში რომ გამოჩნდეს რა მოხდა
+        print(f"Error: {e}")
         return jsonify({"status": "error", "message": "სერვერის შეცდომა რეგისტრაციისას"}), 500
 
 @app.route('/admin/<password>')
@@ -109,5 +133,6 @@ def pick_winner(password):
     })
 
 if __name__ == '__main__':
+    # Render-ზე ავტომატურად აიღებს პორტს
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
