@@ -1,0 +1,41 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Giveaway</title>
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+    <style>
+        body { background: #0f0f1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 20px; border: 1px solid #333; width: 350px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #1a1a2e; border: 1px solid #444; color: white; border-radius: 5px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background: #00d4ff; border: none; color: black; font-weight: bold; cursor: pointer; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>გათამაშება 🎁</h2>
+        <input type="text" id="name" placeholder="სახელი გვარი">
+        <input type="text" id="discord" placeholder="Discord სახელი">
+        <input type="text" id="steam" placeholder="Steam სახელი">
+        <button onclick="send()">რეგისტრაცია</button>
+        <p id="msg"></p>
+    </div>
+    <script>
+        async function send() {
+            const fp = await (await FingerprintJS.load()).get();
+            const res = await fetch('/register', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    full_name: document.getElementById('name').value,
+                    discord_tag: document.getElementById('discord').value,
+                    steam_name: document.getElementById('steam').value,
+                    fingerprint: fp.visitorId
+                })
+            });
+            const data = await res.json();
+            document.getElementById('msg').innerText = data.message;
+        }
+    </script>
+</body>
+</html>

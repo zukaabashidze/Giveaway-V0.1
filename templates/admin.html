@@ -1,0 +1,39 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin</title>
+    <style>
+        body { background: #0b0b14; color: white; font-family: sans-serif; padding: 40px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border: 1px solid #333; text-align: left; }
+        .winner { background: #00d4ff; color: black; padding: 20px; margin-bottom: 20px; display: none; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <h1>ადმინ პანელი 🛠️</h1>
+    <div id="win" class="winner"></div>
+    <button onclick="pick()">გამარჯვებულის გამოვლენა 🎲</button>
+    <table>
+        <tr><th>სახელი</th><th>Discord/Steam</th><th>მოქმედება</th></tr>
+        {% for p in participants %}
+        <tr>
+            <td>{{ p.full_name }}</td>
+            <td>{{ p.discord_tag }} / {{ p.steam_name }}</td>
+            <td><a href="/delete/{{ p.id }}/{{ pw }}" style="color:red">წაშლა</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+    <script>
+        async function pick() {
+            const res = await fetch('/pick_winner/{{ pw }}');
+            const data = await res.json();
+            if(data.full_name) {
+                const w = document.getElementById('win');
+                w.style.display = 'block';
+                w.innerHTML = "🏆 გამარჯვებული: " + data.full_name + " | " + data.discord;
+            }
+        }
+    </script>
+</body>
+</html>
